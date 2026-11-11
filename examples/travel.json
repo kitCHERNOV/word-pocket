@@ -1,0 +1,16 @@
+{
+  "words": [
+    { "word": "journey", "translation": "путешествие", "transcription": "/ˈdʒɜːni/" },
+    { "word": "ticket", "translation": "билет", "transcription": "/ˈtɪkɪt/" },
+    { "word": "airport", "translation": "аэропорт", "transcription": "/ˈeəpɔːt/" },
+    { "word": "luggage", "translation": "багаж", "transcription": "/ˈlʌɡɪdʒ/" },
+    { "word": "passport", "translation": "паспорт", "transcription": "/ˈpɑːspɔːt/" },
+    { "word": "reservation", "translation": "бронирование", "transcription": "/ˌrezəˈveɪʃən/" },
+    { "word": "Where is the station?", "translation": "Где находится станция?" },
+    { "word": "I would like a window seat.", "translation": "Я хотел бы место у окна." },
+    { "word": "How much does it cost?", "translation": "Сколько это стоит?" },
+    { "word": "Can you help me?", "translation": "Вы можете мне помочь?" },
+    { "word": "I have a reservation.", "translation": "У меня есть бронь." },
+    { "word": "Have a nice trip!", "translation": "Хорошей поездки!" }
+  ]
+}

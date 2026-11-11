@@ -1,0 +1,24 @@
+{
+  "words": [
+    { "word": "cat", "translation": "кот", "transcription": "/kæt/" },
+    { "word": "dog", "translation": "собака", "transcription": "/dɒɡ/" },
+    { "word": "sun", "translation": "солнце", "transcription": "/sʌn/" },
+    { "word": "moon", "translation": "луна", "transcription": "/muːn/" },
+    { "word": "water", "translation": "вода", "transcription": "/ˈwɔːtə/" },
+    { "word": "milk", "translation": "молоко", "transcription": "/mɪlk/" },
+    { "word": "bread", "translation": "хлеб", "transcription": "/bred/" },
+    { "word": "apple", "translation": "яблоко", "transcription": "/ˈæpəl/" },
+    { "word": "book", "translation": "книга", "transcription": "/bʊk/" },
+    { "word": "pen", "translation": "ручка", "transcription": "/pen/" },
+    { "word": "house", "translation": "дом", "transcription": "/haʊs/" },
+    { "word": "door", "translation": "дверь", "transcription": "/dɔː/" },
+    { "word": "table", "translation": "стол", "transcription": "/ˈteɪbəl/" },
+    { "word": "chair", "translation": "стул", "transcription": "/tʃeə/" },
+    { "word": "car", "translation": "машина", "transcription": "/kɑː/" },
+    { "word": "tree", "translation": "дерево", "transcription": "/triː/" },
+    { "word": "hand", "translation": "рука", "transcription": "/hænd/" },
+    { "word": "eye", "translation": "глаз", "transcription": "/aɪ/" },
+    { "word": "red", "translation": "красный", "transcription": "/red/" },
+    { "word": "blue", "translation": "синий", "transcription": "/bluː/" }
+  ]
+}

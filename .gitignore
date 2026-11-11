@@ -1,0 +1,15 @@
+.gradle/
+.kotlin/
+**/build/
+local.properties
+.idea/
+*.iml
+*.jks
+*.keystore
+.DS_Store
+.gradle-bootstrap/
+.android/
+*.apk
+gradle/wrapper/gradle-wrapper.jar
+gradle/wrapper/download.*
+gradle/wrapper/*.tmp

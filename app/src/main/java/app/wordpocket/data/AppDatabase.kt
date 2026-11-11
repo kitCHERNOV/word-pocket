@@ -1,0 +1,60 @@
+package app.wordpocket.data
+
+import androidx.room.*
+import kotlinx.coroutines.flow.Flow
+
+@Entity(tableName = "dictionaries")
+data class DictionaryEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val poolSize: Int = 10,
+    val poolTotal: Int = 0,
+)
+
+@Entity(
+    tableName = "words",
+    foreignKeys = [ForeignKey(entity = DictionaryEntity::class, parentColumns = ["id"], childColumns = ["dictionaryId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("dictionaryId"), Index(value = ["dictionaryId", "identity"], unique = true)],
+)
+data class WordEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val dictionaryId: Long,
+    val word: String,
+    val translation: String,
+    val transcription: String = "",
+    val identity: String,
+    val streak: Int = 0,
+    val learned: Boolean = false,
+)
+
+@Entity(
+    tableName = "pool",
+    foreignKeys = [
+        ForeignKey(entity = DictionaryEntity::class, parentColumns = ["id"], childColumns = ["dictionaryId"], onDelete = ForeignKey.CASCADE),
+        ForeignKey(entity = WordEntity::class, parentColumns = ["id"], childColumns = ["wordId"], onDelete = ForeignKey.CASCADE),
+    ],
+    indices = [Index("dictionaryId")],
+)
+data class PoolItem(@PrimaryKey val wordId: Long, val dictionaryId: Long, val turn: Long)
+
+@Dao
+interface WordDao {
+    @Query("SELECT * FROM dictionaries ORDER BY id DESC") fun observeDictionaries(): Flow<List<DictionaryEntity>>
+    @Query("SELECT * FROM words ORDER BY id") fun observeWords(): Flow<List<WordEntity>>
+    @Query("SELECT * FROM pool ORDER BY turn, wordId") fun observePool(): Flow<List<PoolItem>>
+    @Query("SELECT * FROM dictionaries WHERE id = :id") suspend fun dictionary(id: Long): DictionaryEntity?
+    @Query("SELECT * FROM words WHERE dictionaryId = :dictionaryId ORDER BY id") suspend fun words(dictionaryId: Long): List<WordEntity>
+    @Query("SELECT * FROM words WHERE id = :id") suspend fun word(id: Long): WordEntity?
+    @Query("SELECT * FROM pool WHERE dictionaryId = :dictionaryId ORDER BY turn, wordId") suspend fun pool(dictionaryId: Long): List<PoolItem>
+    @Insert suspend fun insertDictionary(dictionary: DictionaryEntity): Long
+    @Update suspend fun updateDictionary(dictionary: DictionaryEntity)
+    @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertWord(word: WordEntity): Long
+    @Update suspend fun updateWord(word: WordEntity)
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun savePool(items: List<PoolItem>)
+    @Query("DELETE FROM pool WHERE wordId = :wordId") suspend fun removeFromPool(wordId: Long)
+    @Query("DELETE FROM words WHERE id = :id") suspend fun deleteWord(id: Long)
+    @Query("DELETE FROM dictionaries WHERE id = :id") suspend fun deleteDictionary(id: Long)
+}
+
+@Database(entities = [DictionaryEntity::class, WordEntity::class, PoolItem::class], version = 1, exportSchema = true)
+abstract class AppDatabase : RoomDatabase() { abstract fun dao(): WordDao }
