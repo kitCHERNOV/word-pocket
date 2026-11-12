@@ -11,15 +11,16 @@ data class Library(
 )
 data class ImportResult(val added: Int, val skipped: Int)
 
-class WordRepository(private val database: AppDatabase) {
+open class WordRepository(private val database: AppDatabase) {
     private val dao = database.dao()
     val library = combine(dao.observeDictionaries(), dao.observeWords(), dao.observePool()) { dictionaries, words, pool ->
         Library(dictionaries, words, pool)
     }
 
-    suspend fun createDictionary(name: String): Long {
+    suspend fun createDictionary(name: String, poolSize: Int = 10): Long {
         require(name.trim().isNotEmpty() && name.trim().length <= 80) { "Название должно содержать от 1 до 80 символов." }
-        return dao.insertDictionary(DictionaryEntity(name = name.trim()))
+        require(poolSize in 1..100) { "Размер пула: от 1 до 100 слов." }
+        return dao.insertDictionary(DictionaryEntity(name = name.trim(), poolSize = poolSize))
     }
 
     suspend fun updateDictionary(id: Long, name: String, poolSize: Int) {
@@ -69,7 +70,7 @@ class WordRepository(private val database: AppDatabase) {
         dao.deleteWord(id)
         if (inPool) dao.dictionary(word.dictionaryId)?.let { dao.updateDictionary(it.copy(poolTotal = (it.poolTotal - 1).coerceAtLeast(0))) }
     }
-    suspend fun words(id: Long) = dao.words(id)
+    open suspend fun words(id: Long) = dao.words(id)
     suspend fun dictionary(id: Long) = dao.dictionary(id)
     suspend fun pool(id: Long) = dao.pool(id)
 
@@ -82,7 +83,7 @@ class WordRepository(private val database: AppDatabase) {
         }
     }
 
-    suspend fun answerLearning(wordId: Long, correct: Boolean): LearningResult = database.withTransaction {
+    open suspend fun answerLearning(wordId: Long, correct: Boolean): LearningResult = database.withTransaction {
         val word = requireNotNull(dao.word(wordId)) { "Карточка не найдена." }
         val pool = dao.pool(word.dictionaryId)
         require(pool.any { it.wordId == wordId }) { "Карточка больше не входит в пул." }

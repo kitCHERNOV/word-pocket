@@ -16,7 +16,7 @@ import kotlinx.coroutines.withContext
 
 enum class TrainingMode { LEARN, REVIEW }
 enum class AnswerMode { CHOICES, WRITING }
-data class Feedback(val correct: Boolean, val streak: Int, val mastered: Boolean)
+data class Feedback(val correct: Boolean, val streak: Int, val mastered: Boolean, val selectedAnswer: String?)
 data class Training(
     val dictionaryId: Long,
     val dictionaryName: String,
@@ -28,10 +28,13 @@ data class Training(
     val answerMode: AnswerMode = AnswerMode.CHOICES,
     val feedback: Feedback? = null,
     val completed: Boolean = false,
+    val questionToken: Long = 0,
+    val advancePending: Boolean = false,
+    val loadFailed: Boolean = false,
 )
 
-class AppViewModel(application: Application) : AndroidViewModel(application) {
-    private val repository = (application as WordPocketApp).repository
+class AppViewModel(application: Application, private val repository: WordRepository) : AndroidViewModel(application) {
+    constructor(application: Application) : this(application, (application as WordPocketApp).repository)
     val library = repository.library.stateIn(viewModelScope, SharingStarted.Eagerly, Library())
     private val _busy = MutableStateFlow(false)
     val busy = _busy.asStateFlow()
@@ -40,6 +43,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val messagesChannel = Channel<String>(Channel.BUFFERED)
     val messages = messagesChannel.receiveAsFlow()
     private val reviewQueue = ArrayDeque<Long>()
+    private var nextToken = 0L
 
     private fun task(block: suspend () -> Unit) {
         if (_busy.value) return
@@ -52,7 +56,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun createDictionary(name: String, onCreated: (Long) -> Unit) = task { onCreated(repository.createDictionary(name)) }
+    fun createDictionary(name: String, size: Int, onCreated: (Long) -> Unit) = task { onCreated(repository.createDictionary(name, size)) }
     fun updateDictionary(id: Long, name: String, size: Int, onSaved: () -> Unit) = task {
         repository.updateDictionary(id, name, size); onSaved()
     }
@@ -91,7 +95,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         require(count > 0) { if (mode == TrainingMode.LEARN) "Все слова уже выучены." else "В этом словаре пока нет выученных слов." }
         _training.value = Training(dictionaryId, dictionary.name, mode,
             total = if (mode == TrainingMode.LEARN) dictionary.poolTotal else count, remaining = count)
-        loadQuestion()
+        loadQuestionSafely()
     }
 
     private suspend fun loadQuestion() {
@@ -103,17 +107,34 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val remaining = if (session.mode == TrainingMode.LEARN) pool.size else reviewQueue.size
         val choices = word?.let { correct -> buildChoices(correct.draft(), words.map { it.draft() }) }.orEmpty()
         _training.value = session.copy(question = word, choices = choices, remaining = remaining,
-            feedback = null, completed = word == null)
+            feedback = null, completed = word == null, questionToken = ++nextToken, advancePending = false, loadFailed = false)
+    }
+
+    private suspend fun loadQuestionSafely() {
+        try {
+            loadQuestion()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            _training.update { it?.copy(loadFailed = true) }
+            throw e
+        }
     }
 
     fun setAnswerMode(mode: AnswerMode) {
-        if (!_busy.value) _training.update { it?.takeIf { s -> s.feedback == null }?.copy(answerMode = mode) ?: it }
+        if (!_busy.value) _training.update {
+            it?.takeIf { s -> s.feedback == null && !s.advancePending && !s.loadFailed }?.copy(answerMode = mode) ?: it
+        }
     }
 
-    fun answer(text: String?) = task {
+    fun answer(token: Long, text: String?, source: AnswerMode) = task {
         val session = _training.value ?: return@task
         val word = session.question ?: return@task
-        if (session.feedback != null) return@task
+        if (session.questionToken != token || session.feedback != null || session.advancePending || session.loadFailed) return@task
+        val effectiveMode = if (session.choices.isEmpty()) AnswerMode.WRITING else session.answerMode
+        if (source != effectiveMode) return@task
+        if (text != null && source == AnswerMode.CHOICES && text !in session.choices) return@task
+        if (text != null && source == AnswerMode.WRITING && text.isBlank()) return@task
         val correct = text != null && answersMatch(text, word.word)
         val result = if (session.mode == TrainingMode.LEARN) repository.answerLearning(word.id, correct)
         else {
@@ -121,10 +142,21 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             if (!correct) reviewQueue.addLast(word.id)
             LearningResult(word.streak, false)
         }
-        _training.value = session.copy(feedback = Feedback(correct, result.streak, result.learned))
+        if (correct && source == AnswerMode.CHOICES) {
+            // The answer is committed. A failed read can only retry loading, never submit it again.
+            _training.value = session.copy(advancePending = true)
+            loadQuestionSafely()
+        } else {
+            _training.value = session.copy(feedback = Feedback(correct, result.streak, result.learned, text))
+        }
     }
 
-    fun nextQuestion() = task { loadQuestion() }
+    fun nextQuestion(token: Long) = task {
+        val session = _training.value ?: return@task
+        if (session.questionToken != token || (session.feedback == null && !session.loadFailed)) return@task
+        _training.value = session.copy(advancePending = true, loadFailed = false)
+        loadQuestionSafely()
+    }
     fun closeTraining() { if (!_busy.value) { _training.value = null; reviewQueue.clear() } }
 }
 
