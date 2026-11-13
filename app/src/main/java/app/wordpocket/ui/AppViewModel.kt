@@ -36,6 +36,9 @@ data class Training(
 
 class AppViewModel(application: Application, private val repository: WordRepository) : AndroidViewModel(application) {
     constructor(application: Application) : this(application, (application as WordPocketApp).repository)
+    private val themePreferences = ThemePreferences(application)
+    private val _darkTheme = MutableStateFlow(themePreferences.darkTheme)
+    val darkTheme: StateFlow<Boolean?> = _darkTheme.asStateFlow()
     val library = repository.library.stateIn(viewModelScope, SharingStarted.Eagerly, Library())
     val settings: StateFlow<AppSettings?> = repository.settings.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     private val _busy = MutableStateFlow(false)
@@ -46,6 +49,11 @@ class AppViewModel(application: Application, private val repository: WordReposit
     val messages = messagesChannel.receiveAsFlow()
     private val reviewQueue = ArrayDeque<Long>()
     private var nextToken = 0L
+
+    fun setDarkTheme(darkTheme: Boolean) {
+        themePreferences.setDarkTheme(darkTheme)
+        _darkTheme.value = darkTheme
+    }
 
     private fun task(block: suspend () -> Unit) {
         if (_busy.value) return

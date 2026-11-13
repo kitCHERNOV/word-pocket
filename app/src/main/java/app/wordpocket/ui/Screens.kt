@@ -17,7 +17,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.wordpocket.R
 
 @Composable
-fun WordPocketRoot(vm: AppViewModel) {
+fun WordPocketRoot(vm: AppViewModel, darkTheme: Boolean, onToggleTheme: () -> Unit) {
     val library by vm.library.collectAsStateWithLifecycle()
     val training by vm.training.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
@@ -55,7 +55,11 @@ fun WordPocketRoot(vm: AppViewModel) {
             Row(Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (dictionaryId == null && training == null) {
-                    PaperIcon(R.drawable.ic_sun, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                    IconButton(onClick = onToggleTheme, modifier = Modifier.size(48.dp)) {
+                        PaperIcon(if (darkTheme) R.drawable.ic_sun else R.drawable.ic_moon,
+                            description = if (darkTheme) "Включить светлую тему" else "Включить тёмную тему",
+                            tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                    }
                     Text("WordPocket", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                     PaperIconButton(R.drawable.ic_settings, "Настройки обучения", !busy && settings != null) { learningSettings = true }
                     PaperIconButton(R.drawable.ic_plus, "Создать словарь", !busy) { createDictionary = true }

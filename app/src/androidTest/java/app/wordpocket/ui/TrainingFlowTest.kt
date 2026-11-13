@@ -77,7 +77,9 @@ class TrainingFlowTest {
                 CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale.value)) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                         Surface(Modifier.widthIn(max = viewportWidth.value).fillMaxSize().testTag("app-content"),
-                            color = MaterialTheme.colorScheme.background) { WordPocketRoot(vm) }
+                            color = MaterialTheme.colorScheme.background) {
+                            WordPocketRoot(vm, darkTheme = darkTheme.value, onToggleTheme = { darkTheme.value = !darkTheme.value })
+                        }
                     }
                 }
             }
@@ -442,6 +444,9 @@ class TrainingFlowTest {
             fontScale.value = 2f
         }
         screenshot("library-small-large-font")
+        compose.onNodeWithContentDescription("Включить тёмную тему").assertIsDisplayed().performClick()
+        compose.onNodeWithContentDescription("Включить светлую тему").assertIsDisplayed().performClick()
+        compose.onNodeWithContentDescription("Создать словарь").assertIsDisplayed()
         compose.onNodeWithContentDescription("Настройки обучения").performClick()
         compose.onNodeWithText("Сохранить").performScrollTo().assertIsDisplayed()
         screenshot("settings-small-large-font")
