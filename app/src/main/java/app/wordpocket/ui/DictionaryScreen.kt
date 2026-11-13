@@ -20,16 +20,18 @@ import app.wordpocket.data.*
 @Composable
 internal fun DictionaryScreen(
     dictionary: DictionaryEntity, words: List<WordEntity>, pool: List<PoolItem>, busy: Boolean,
-    vm: AppViewModel, onImport: () -> Unit, onExport: () -> Unit,
+    vm: AppViewModel, requiredStreak: Int, onImport: () -> Unit, onExport: () -> Unit,
 ) {
     var showWordEditor by rememberSaveable { mutableStateOf(false) }
     var editingId by rememberSaveable { mutableStateOf<Long?>(null) }
     var search by rememberSaveable { mutableStateOf("") }
     var filter by rememberSaveable { mutableIntStateOf(0) }
     val learned = words.count { it.learned }
+    val known = words.count { it.alreadyKnown }
     val poolIds = pool.map { it.wordId }.toSet()
     val filtered = words.filter {
-        (filter == 0 || (filter == 1 && !it.learned) || (filter == 2 && it.learned)) &&
+        (filter == 0 || (filter == 1 && !it.learned && !it.alreadyKnown) ||
+            (filter == 2 && it.learned) || (filter == 3 && it.alreadyKnown)) &&
             (it.word.contains(search, ignoreCase = true) || it.translation.contains(search, ignoreCase = true))
     }
     Column(Modifier.fillMaxSize()) {
@@ -38,15 +40,18 @@ internal fun DictionaryScreen(
                 Column(Modifier.padding(bottom = 6.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Eyebrow("Личная коллекция", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(dictionary.name, style = MaterialTheme.typography.headlineMedium)
-                    Muted("${words.size} карточек  /  $learned уже выучено")
+                    Muted("${words.size} карточек · $learned выучено · $known уже знаю")
                 }
             }
             item {
                 Surface(shape = RoundedCornerShape(15.dp), color = MaterialTheme.colorScheme.primaryContainer) {
                     Column(Modifier.padding(19.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Eyebrow(if (pool.isEmpty()) "Один небольшой шаг" else "Продолжим с того же места", color = MaterialTheme.colorScheme.onPrimaryContainer)
-                        Text(if (pool.isEmpty()) "Новые слова ждут вас" else "${pool.size} карточек ещё в пуле", style = MaterialTheme.typography.headlineSmall)
-                        Text(if (pool.isEmpty()) "Порция до ${dictionary.poolSize} карточек. Три верных ответа подряд — и слово выучено."
+                        Text(if (pool.isNotEmpty()) "${pool.size} карточек ещё в пуле"
+                            else if (words.isEmpty()) "Добавьте первые карточки"
+                            else if (words.any { !it.learned && !it.alreadyKnown }) "Новые слова ждут вас"
+                            else "Все карточки уже знакомы", style = MaterialTheme.typography.headlineSmall)
+                        Text(if (pool.isEmpty()) "Порция до ${dictionary.poolSize} карточек. Правильных ответов подряд для освоения: $requiredStreak."
                             else "Всего в занятии ${dictionary.poolTotal}. Ваши ответы сохранены.", style = MaterialTheme.typography.bodyMedium)
                         PaperButton("Повторить выученные", { vm.startTraining(dictionary.id, TrainingMode.REVIEW) },
                             Modifier.fillMaxWidth(), !busy && learned > 0, primary = false, icon = R.drawable.ic_repeat)
@@ -69,9 +74,9 @@ internal fun DictionaryScreen(
                     OutlinedTextField(search, { search = it }, Modifier.fillMaxWidth(), enabled = !busy, singleLine = true,
                         label = { Text("Найти слово или перевод") }, leadingIcon = { PaperIcon(R.drawable.ic_search) }, shape = RoundedCornerShape(10.dp))
                     FlowRow(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        listOf("Все", "Учу", "Выучено").forEachIndexed { index, label ->
+                        listOf("Все", "Учу", "Выучено", "Уже знаю").forEachIndexed { index, label ->
                             FilterChip(selected = filter == index, onClick = { filter = index }, label = { Text(label) },
-                                modifier = Modifier.heightIn(min = 48.dp), shape = RoundedCornerShape(7.dp), border = null,
+                                modifier = Modifier.heightIn(min = 48.dp).testTag("word-filter-$index"), shape = RoundedCornerShape(7.dp), border = null,
                                 colors = FilterChipDefaults.filterChipColors(selectedContainerColor = MaterialTheme.colorScheme.surfaceVariant))
                         }
                     }
@@ -89,14 +94,23 @@ internal fun DictionaryScreen(
                             }
                             Column(Modifier.widthIn(max = 90.dp), horizontalAlignment = Alignment.End) {
                                 when {
+                                    word.alreadyKnown -> Muted("Уже знаю")
                                     word.learned -> {
                                         PaperIcon(R.drawable.ic_check, tint = MaterialTheme.colorScheme.secondary)
                                         Text("Выучено", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
                                     }
-                                    word.id in poolIds -> StreakDots(word.streak)
+                                    word.id in poolIds -> Muted("Учу")
                                     else -> Muted("Новое")
                                 }
                             }
+                        }
+                        if (word.id in poolIds && !word.alreadyKnown && !word.learned) {
+                            StreakProgress(word.streak, requiredStreak)
+                        }
+                        TextButton(onClick = {
+                            if (word.alreadyKnown) vm.returnToLearning(word.id) else vm.markAlreadyKnown(word.id)
+                        }, enabled = !busy, modifier = Modifier.heightIn(min = 48.dp).testTag("known-${word.id}")) {
+                            Text(if (word.alreadyKnown) "Вернуть в изучение" else "Already know")
                         }
                     }
                 }

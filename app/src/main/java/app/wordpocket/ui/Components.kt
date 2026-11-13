@@ -2,7 +2,6 @@
 
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -13,8 +12,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -73,12 +70,10 @@ internal fun Muted(text: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-internal fun StreakDots(streak: Int) {
-    Row(Modifier.semantics { contentDescription = "$streak из 3 правильных ответов" }, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-        repeat(3) { index ->
-            Box(Modifier.size(6.dp).clip(CircleShape).background(
-                if (index < streak) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant))
-        }
+internal fun StreakProgress(streak: Int, requiredStreak: Int) {
+    Column(Modifier.widthIn(max = 240.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Muted("Правильных подряд: $streak. Нужно: $requiredStreak.")
+        ThinProgress(streak.toFloat() / requiredStreak)
     }
 }
 

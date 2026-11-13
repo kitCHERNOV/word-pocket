@@ -21,9 +21,11 @@ fun WordPocketRoot(vm: AppViewModel) {
     val library by vm.library.collectAsStateWithLifecycle()
     val training by vm.training.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
+    val settings by vm.settings.collectAsStateWithLifecycle()
     var dictionaryId by rememberSaveable { mutableStateOf<Long?>(null) }
     var createDictionary by rememberSaveable { mutableStateOf(false) }
     var editSettings by rememberSaveable { mutableStateOf(false) }
+    var learningSettings by rememberSaveable { mutableStateOf(false) }
     var exitTraining by rememberSaveable { mutableStateOf(false) }
     var importTarget by rememberSaveable { mutableStateOf<Long?>(null) }
     var exportTarget by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -55,6 +57,7 @@ fun WordPocketRoot(vm: AppViewModel) {
                 if (dictionaryId == null && training == null) {
                     PaperIcon(R.drawable.ic_sun, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
                     Text("WordPocket", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                    PaperIconButton(R.drawable.ic_settings, "Настройки обучения", !busy && settings != null) { learningSettings = true }
                     PaperIconButton(R.drawable.ic_plus, "Создать словарь", !busy) { createDictionary = true }
                 } else {
                     PaperIconButton(R.drawable.ic_back, "Назад", !busy) { back() }
@@ -81,7 +84,7 @@ fun WordPocketRoot(vm: AppViewModel) {
                                 val hasPool = library.pool.any { it.dictionaryId == dictionary.id }
                                 PaperButton(if (hasPool) "Продолжить изучение" else "Учить новые слова",
                                     { vm.startTraining(dictionary.id, TrainingMode.LEARN) }, Modifier.fillMaxWidth(),
-                                    !busy && library.words.any { it.dictionaryId == dictionary.id && !it.learned }, icon = R.drawable.ic_arrow)
+                                    !busy && library.words.any { it.dictionaryId == dictionary.id && !it.learned && !it.alreadyKnown }, icon = R.drawable.ic_arrow)
                             }
                         }
                     }
@@ -92,11 +95,11 @@ fun WordPocketRoot(vm: AppViewModel) {
                 Box(Modifier.widthIn(max = if (training == null) 720.dp else 470.dp).fillMaxSize()) {
                     val session = training
                     when {
-                        session != null -> TrainingScreen(session, busy, vm::setAnswerMode, vm::answer)
+                        session != null -> TrainingScreen(session, busy, vm::setAnswerMode, vm::answer, vm::markQuestionAlreadyKnown)
                         dictionaryId == null -> LibraryScreen(library, busy, { dictionaryId = it })
                         dictionary != null -> key(dictionary.id) {
                             DictionaryScreen(dictionary, library.words.filter { it.dictionaryId == dictionary.id },
-                                library.pool.filter { it.dictionaryId == dictionary.id }, busy, vm,
+                                library.pool.filter { it.dictionaryId == dictionary.id }, busy, vm, settings?.requiredStreak ?: 1,
                                 onImport = { importTarget = dictionary.id; importLauncher.launch(arrayOf("application/json", "text/*", "application/octet-stream")) },
                                 onExport = { exportTarget = dictionary.id; exportLauncher.launch("wordpocket-${dictionary.id}.json") })
                         }
@@ -112,6 +115,11 @@ fun WordPocketRoot(vm: AppViewModel) {
     }
     if (editSettings && dictionary != null) DictionarySettings(dictionary, busy, vm,
         onDismiss = { editSettings = false }, onDeleted = { editSettings = false; dictionaryId = null })
+    if (learningSettings) settings?.let { current ->
+        LearningSettingsDialog(current, busy, { learningSettings = false }) { requiredStreak ->
+            vm.updateLearningSettings(requiredStreak) { learningSettings = false }
+        }
+    }
     if (exitTraining) ConfirmDialog("Закончить занятие?",
         if (training?.mode == TrainingMode.LEARN) "Ответы и текущий пул сохранены. Продолжите, когда будет удобно."
         else "Выученные слова сохранят свой статус. Следующее повторение начнётся заново.",

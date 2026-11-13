@@ -31,11 +31,13 @@ data class Training(
     val questionToken: Long = 0,
     val advancePending: Boolean = false,
     val loadFailed: Boolean = false,
+    val requiredStreak: Int = DEFAULT_REQUIRED_STREAK,
 )
 
 class AppViewModel(application: Application, private val repository: WordRepository) : AndroidViewModel(application) {
     constructor(application: Application) : this(application, (application as WordPocketApp).repository)
     val library = repository.library.stateIn(viewModelScope, SharingStarted.Eagerly, Library())
+    val settings: StateFlow<AppSettings?> = repository.settings.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     private val _busy = MutableStateFlow(false)
     val busy = _busy.asStateFlow()
     private val _training = MutableStateFlow<Training?>(null)
@@ -65,6 +67,21 @@ class AppViewModel(application: Application, private val repository: WordReposit
     }
     fun deleteDictionary(id: Long, onDeleted: () -> Unit) = task { repository.deleteDictionary(id); onDeleted() }
     fun deleteWord(id: Long, onDeleted: () -> Unit) = task { repository.deleteWord(id); onDeleted() }
+    fun updateLearningSettings(requiredStreak: Int, onSaved: () -> Unit) = task {
+        repository.updateLearningSettings(requiredStreak); onSaved()
+    }
+    fun markAlreadyKnown(wordId: Long) = task { repository.markAlreadyKnown(wordId) }
+    fun returnToLearning(wordId: Long) = task { repository.returnToLearning(wordId) }
+
+    fun markQuestionAlreadyKnown(token: Long) = task {
+        val session = _training.value ?: return@task
+        val word = session.question ?: return@task
+        if (session.mode != TrainingMode.LEARN || session.questionToken != token || session.feedback != null ||
+            session.advancePending || session.loadFailed) return@task
+        repository.markAlreadyKnown(word.id)
+        _training.value = session.copy(advancePending = true)
+        loadQuestionSafely()
+    }
 
     fun importJson(dictionaryId: Long, uri: Uri) = task {
         val drafts = withContext(Dispatchers.IO) {
@@ -90,9 +107,9 @@ class AppViewModel(application: Application, private val repository: WordReposit
         val dictionary = requireNotNull(repository.dictionary(dictionaryId)) { "Словарь не найден." }
         val words = repository.words(dictionaryId)
         reviewQueue.clear()
-        if (mode == TrainingMode.REVIEW) reviewQueue.addAll(words.filter { it.learned }.shuffled().map { it.id })
+        if (mode == TrainingMode.REVIEW) reviewQueue.addAll(words.filter { it.learned && !it.alreadyKnown }.shuffled().map { it.id })
         val count = if (mode == TrainingMode.LEARN) repository.pool(dictionaryId).size else reviewQueue.size
-        require(count > 0) { if (mode == TrainingMode.LEARN) "Все слова уже выучены." else "В этом словаре пока нет выученных слов." }
+        require(count > 0) { if (mode == TrainingMode.LEARN) "Все слова уже выучены или знакомы." else "В этом словаре пока нет выученных слов." }
         _training.value = Training(dictionaryId, dictionary.name, mode,
             total = if (mode == TrainingMode.LEARN) dictionary.poolTotal else count, remaining = count)
         loadQuestionSafely()
@@ -101,13 +118,15 @@ class AppViewModel(application: Application, private val repository: WordReposit
     private suspend fun loadQuestion() {
         val session = _training.value ?: return
         val words = repository.words(session.dictionaryId)
+        val requiredStreak = repository.learningSettings().requiredStreak
         val pool = if (session.mode == TrainingMode.LEARN) repository.pool(session.dictionaryId) else emptyList()
         val id = if (session.mode == TrainingMode.LEARN) pool.firstOrNull()?.wordId else reviewQueue.firstOrNull()
         val word = words.find { it.id == id }
         val remaining = if (session.mode == TrainingMode.LEARN) pool.size else reviewQueue.size
         val choices = word?.let { correct -> buildChoices(correct.draft(), words.map { it.draft() }) }.orEmpty()
         _training.value = session.copy(question = word, choices = choices, remaining = remaining,
-            feedback = null, completed = word == null, questionToken = ++nextToken, advancePending = false, loadFailed = false)
+            feedback = null, completed = word == null, questionToken = ++nextToken, advancePending = false, loadFailed = false,
+            requiredStreak = requiredStreak)
     }
 
     private suspend fun loadQuestionSafely() {

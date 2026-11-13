@@ -9,6 +9,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.wordpocket.R
@@ -18,8 +20,9 @@ import app.wordpocket.data.*
 internal fun LibraryScreen(library: Library, busy: Boolean, onOpen: (Long) -> Unit) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val columns = if (maxWidth >= 600.dp) 2 else 1
+        val metricColumns = if (maxWidth < 500.dp || LocalDensity.current.fontScale > 1.3f) 2 else 4
         Column(Modifier.fillMaxSize()) {
-            LazyVerticalGrid(columns = GridCells.Fixed(columns), modifier = Modifier.weight(1f),
+            LazyVerticalGrid(columns = GridCells.Fixed(columns), modifier = Modifier.weight(1f).testTag("library-grid"),
                 contentPadding = PaddingValues(22.dp, 12.dp, 22.dp, 26.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
@@ -32,12 +35,14 @@ internal fun LibraryScreen(library: Library, busy: Boolean, onOpen: (Long) -> Un
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Column(Modifier.padding(bottom = 12.dp)) {
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        Row(Modifier.fillMaxWidth().padding(vertical = 18.dp).height(IntrinsicSize.Min)) {
-                            Metric("${library.dictionaries.size}", "словарей", Modifier.weight(1f))
-                            VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                            Metric("${library.words.size}", "карточек", Modifier.weight(1f).padding(start = 20.dp))
-                            VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                            Metric("${library.words.count { it.learned }}", "выучено", Modifier.weight(1f).padding(start = 20.dp))
+                        val metrics = listOf(
+                            library.dictionaries.size to "словарей", library.words.size to "карточек",
+                            library.words.count { it.learned } to "выучено", library.words.count { it.alreadyKnown } to "уже знаю",
+                        )
+                        metrics.chunked(metricColumns).forEach { row ->
+                            Row(Modifier.fillMaxWidth().padding(vertical = 18.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                                row.forEach { (count, label) -> Metric("$count", label, Modifier.weight(1f)) }
+                            }
                         }
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     }
@@ -53,6 +58,7 @@ internal fun LibraryScreen(library: Library, busy: Boolean, onOpen: (Long) -> Un
                 items(library.dictionaries, key = { it.id }) { dictionary ->
                     val words = library.words.filter { it.dictionaryId == dictionary.id }
                     val learned = words.count { it.learned }
+                    val known = words.count { it.alreadyKnown }
                     Surface(onClick = { onOpen(dictionary.id) }, enabled = !busy, shape = RoundedCornerShape(15.dp),
                         color = MaterialTheme.colorScheme.surface, border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
                         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(17.dp)) {
@@ -64,12 +70,12 @@ internal fun LibraryScreen(library: Library, busy: Boolean, onOpen: (Long) -> Un
                                 }
                                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                     Text(dictionary.name, style = MaterialTheme.typography.titleLarge)
-                                    Muted("${words.size} карточек · $learned выучено" +
+                                    Muted("${words.size} карточек · $learned выучено · $known уже знаю" +
                                         if (library.pool.any { it.dictionaryId == dictionary.id }) " · в процессе" else "")
                                 }
                                 PaperIcon(R.drawable.ic_chevron, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            ThinProgress(if (words.isEmpty()) 0f else learned.toFloat() / words.size, color = MaterialTheme.colorScheme.tertiary)
+                            ThinProgress(if (words.isEmpty()) 0f else (learned + known).toFloat() / words.size, color = MaterialTheme.colorScheme.tertiary)
                         }
                     }
                 }

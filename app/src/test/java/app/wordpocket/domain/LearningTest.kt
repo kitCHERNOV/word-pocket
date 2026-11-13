@@ -4,18 +4,31 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class LearningTest {
-    @Test fun `three consecutive correct recalls are required`() {
-        var result = LearningResult(0, false)
-        repeat(2) { result = recordAnswer(result.streak, true); assertFalse(result.learned) }
-        result = recordAnswer(result.streak, true)
-        assertTrue(result.learned)
-        assertEquals(3, result.streak)
+    @Test fun `configured number of consecutive correct recalls is required`() {
+        for (required in listOf(1, 3, 100)) {
+            var result = LearningResult(0, false)
+            repeat(required - 1) { result = recordAnswer(result.streak, true, required); assertFalse(result.learned) }
+            result = recordAnswer(result.streak, true, required)
+            assertEquals(LearningResult(required, true), result)
+        }
     }
 
     @Test fun `wrong answer resets consecutive recalls`() {
-        val failed = recordAnswer(2, false)
+        val failed = recordAnswer(2, false, 3)
         assertEquals(LearningResult(0, false), failed)
-        assertFalse(recordAnswer(failed.streak, true).learned)
+        assertFalse(recordAnswer(failed.streak, true, 3).learned)
+    }
+
+    @Test fun `lower threshold is applied on the next answer`() {
+        assertEquals(LearningResult(1, true), recordAnswer(2, true, 1))
+        assertEquals(LearningResult(0, false), recordAnswer(2, false, 1))
+        assertEquals(LearningResult(3, false), recordAnswer(2, true, 5))
+    }
+
+    @Test fun `invalid thresholds are rejected`() {
+        for (required in listOf(0, -1, 101, Int.MAX_VALUE)) {
+            assertThrows(IllegalArgumentException::class.java) { recordAnswer(0, true, required) }
+        }
     }
 
     @Test fun `phrases accept case whitespace and typographic apostrophes`() {

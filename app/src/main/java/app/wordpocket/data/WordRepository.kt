@@ -3,6 +3,7 @@ package app.wordpocket.data
 import androidx.room.withTransaction
 import app.wordpocket.domain.*
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 
 data class Library(
     val dictionaries: List<DictionaryEntity> = emptyList(),
@@ -13,8 +14,28 @@ data class ImportResult(val added: Int, val skipped: Int)
 
 open class WordRepository(private val database: AppDatabase) {
     private val dao = database.dao()
+    val settings = dao.observeSettings().map { it ?: AppSettings() }
     val library = combine(dao.observeDictionaries(), dao.observeWords(), dao.observePool()) { dictionaries, words, pool ->
         Library(dictionaries, words, pool)
+    }
+
+    suspend fun learningSettings(): AppSettings = dao.settings() ?: AppSettings()
+
+    open suspend fun updateLearningSettings(requiredStreak: Int) {
+        require(requiredStreak in REQUIRED_STREAK_RANGE) { "Количество ответов: от 1 до 100." }
+        dao.saveSettings(AppSettings(requiredStreak = requiredStreak))
+    }
+
+    open suspend fun markAlreadyKnown(wordId: Long): Unit = database.withTransaction {
+        val word = requireNotNull(dao.word(wordId)) { "Карточка не найдена." }
+        dao.updateWord(word.copy(alreadyKnown = true, learned = false, streak = 0))
+        dao.removeFromPool(wordId)
+    }
+
+    suspend fun returnToLearning(wordId: Long): Unit = database.withTransaction {
+        val word = requireNotNull(dao.word(wordId)) { "Карточка не найдена." }
+        require(word.alreadyKnown) { "Карточка уже доступна для изучения." }
+        dao.updateWord(word.copy(alreadyKnown = false, learned = false, streak = 0))
     }
 
     suspend fun createDictionary(name: String, poolSize: Int = 10): Long {
@@ -46,7 +67,8 @@ open class WordRepository(private val database: AppDatabase) {
                 // Editing pronunciation alone does not discard learning progress.
                 val changed = identity != old.identity
                 dao.updateWord(old.copy(word = value.word, translation = value.translation, transcription = value.transcription,
-                    identity = identity, streak = if (changed) 0 else old.streak, learned = if (changed) false else old.learned))
+                    identity = identity, streak = if (changed) 0 else old.streak, learned = if (changed) false else old.learned,
+                    alreadyKnown = if (changed) false else old.alreadyKnown))
             }
         }
     }
@@ -77,7 +99,7 @@ open class WordRepository(private val database: AppDatabase) {
     suspend fun startPool(dictionaryId: Long): Unit = database.withTransaction {
         val dictionary = requireNotNull(dao.dictionary(dictionaryId)) { "Словарь не найден." }
         if (dao.pool(dictionaryId).isEmpty()) {
-            val selected = dao.words(dictionaryId).filterNot { it.learned }.take(dictionary.poolSize)
+            val selected = dao.words(dictionaryId).filter { !it.learned && !it.alreadyKnown }.take(dictionary.poolSize)
             dao.savePool(selected.mapIndexed { index, word -> PoolItem(word.id, dictionaryId, index.toLong()) })
             dao.updateDictionary(dictionary.copy(poolTotal = selected.size))
         }
@@ -87,7 +109,8 @@ open class WordRepository(private val database: AppDatabase) {
         val word = requireNotNull(dao.word(wordId)) { "Карточка не найдена." }
         val pool = dao.pool(word.dictionaryId)
         require(pool.any { it.wordId == wordId }) { "Карточка больше не входит в пул." }
-        val result = recordAnswer(word.streak, correct)
+        require(!word.alreadyKnown && !word.learned) { "Карточка больше не изучается." }
+        val result = recordAnswer(word.streak, correct, learningSettings().requiredStreak)
         dao.updateWord(word.copy(streak = result.streak, learned = result.learned))
         if (result.learned) dao.removeFromPool(wordId)
         else dao.savePool(listOf(PoolItem(wordId, word.dictionaryId, (pool.maxOfOrNull { it.turn } ?: 0) + 1)))

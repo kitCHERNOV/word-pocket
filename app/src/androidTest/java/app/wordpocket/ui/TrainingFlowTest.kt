@@ -3,6 +3,8 @@ package app.wordpocket.ui
 import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.os.Build
+import android.view.inspector.WindowInspector
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.layout.Box
@@ -55,6 +57,8 @@ class TrainingFlowTest {
         database = Room.inMemoryDatabaseBuilder(application, AppDatabase::class.java).build()
         repository = FailingRepository(database)
         runBlocking {
+            // Exercise multi-showing regressions explicitly; the application default is one.
+            repository.updateLearningSettings(3)
             dictionaryId = repository.createDictionary("На каждый день", 1)
             listOf("cat" to "кот", "dog" to "собака", "sun" to "солнце", "moon" to "луна").forEach { (word, translation) ->
                 repository.saveWord(dictionaryId, null, WordDraft(word, translation, "/$word/"))
@@ -107,6 +111,139 @@ class TrainingFlowTest {
         val token = vm.training.value!!.questionToken
         compose.runOnUiThread { vm.answer(token, text, source) }
         awaitState(10_000) { !vm.busy.value }
+    }
+
+    @Test fun `settings_validate_save_and_training_completes_in_one_answer`() {
+        awaitState { vm.settings.value != null }
+        compose.onNodeWithContentDescription("Настройки обучения").performClick()
+        val input = compose.onNode(hasSetTextAction() and hasText("Правильных ответов подряд"))
+        for (invalid in listOf("", "0", "101", "no", "999999999999")) {
+            input.performTextReplacement(invalid)
+            compose.onNodeWithText("Сохранить").assertIsNotEnabled()
+        }
+        input.performTextReplacement("1")
+        screenshot("learning-settings-light")
+        repository.failSettings = true
+        compose.onNodeWithText("Сохранить").performScrollTo().performClick()
+        awaitState { !vm.busy.value }
+        assertEquals(3, runBlocking { repository.learningSettings().requiredStreak })
+        compose.onNodeWithText("Настройки обучения").assertExists()
+        repository.failSettings = false
+        compose.onNodeWithText("Сохранить").performClick()
+        awaitState { !vm.busy.value && vm.settings.value?.requiredStreak == 1 }
+        compose.onNodeWithContentDescription("Настройки обучения").performClick()
+        assertEquals("1", input.fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.EditableText].text)
+        input.performTextReplacement("5")
+        compose.onNodeWithText("Отмена").performScrollTo().performClick()
+        assertEquals(1, runBlocking { repository.learningSettings().requiredStreak })
+        start()
+        assertEquals(1, vm.training.value!!.requiredStreak)
+        submit("cat")
+        assertTrue(vm.training.value!!.completed)
+        assertTrue(runBlocking { repository.words(dictionaryId).first().learned })
+    }
+
+    @Test fun `already_know_finishes_singleton_without_learning_it_and_rejects_stale_events`() {
+        start()
+        val before = vm.training.value!!
+        compose.onNodeWithTag("already-know").performScrollTo().performClick()
+        awaitState { !vm.busy.value && vm.training.value!!.completed }
+        val completed = vm.training.value!!
+        compose.onNodeWithText("карточек обработано").assertExists()
+        assertEquals(1, completed.total)
+        val word = runBlocking { repository.words(dictionaryId).first() }
+        assertTrue(word.alreadyKnown)
+        assertFalse(word.learned)
+        assertEquals(0, word.streak)
+        assertTrue(runBlocking { repository.pool(dictionaryId).isEmpty() })
+        compose.runOnUiThread {
+            vm.markQuestionAlreadyKnown(before.questionToken)
+            vm.answer(before.questionToken, "cat", AnswerMode.CHOICES)
+        }
+        awaitState { !vm.busy.value }
+        assertEquals(completed, vm.training.value)
+        assertEquals(1, repository.savedKnown)
+        screenshot("already-known-completed-light")
+        compose.onNodeWithText("Вернуться в словарь").performClick()
+        start()
+        assertNotEquals(word.id, vm.training.value!!.question!!.id)
+    }
+
+    @Test fun `already_know_works_with_writing_and_a_fixed_multi_card_pool`() {
+        runBlocking { repository.updateDictionary(dictionaryId, "На каждый день", 2) }
+        start()
+        val original = runBlocking { repository.pool(dictionaryId).map { it.wordId } }
+        compose.runOnUiThread { vm.setAnswerMode(AnswerMode.WRITING) }
+        compose.onNodeWithTag("written-answer").performScrollTo().performTextInput("unfinished")
+        compose.onNodeWithTag("already-know").performScrollTo().performClick()
+        awaitState { !vm.busy.value && vm.training.value!!.remaining == 1 }
+        assertEquals(listOf(original.last()), runBlocking { repository.pool(dictionaryId).map { it.wordId } })
+        assertEquals(2, vm.training.value!!.total)
+        assertEquals("", compose.onNodeWithTag("written-answer").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.EditableText].text)
+        assertNull(vm.training.value!!.feedback)
+    }
+
+    @Test fun `known_action_retries_failed_save_and_never_repeats_committed_action_after_failed_load`() {
+        start()
+        val before = vm.training.value!!
+        repository.failSave = true
+        compose.onNodeWithTag("already-know").performScrollTo().performClick()
+        awaitState { !vm.busy.value }
+        assertEquals(before, vm.training.value)
+        assertFalse(runBlocking { repository.words(dictionaryId).first().alreadyKnown })
+        repository.failSave = false
+        repository.failNextRead = true
+        compose.runOnUiThread {
+            vm.markQuestionAlreadyKnown(before.questionToken)
+            vm.markQuestionAlreadyKnown(before.questionToken)
+        }
+        awaitState { !vm.busy.value }
+        assertTrue(vm.training.value!!.advancePending)
+        assertTrue(vm.training.value!!.loadFailed)
+        assertTrue(runBlocking { repository.words(dictionaryId).first().alreadyKnown })
+        compose.runOnUiThread { vm.markQuestionAlreadyKnown(before.questionToken) }
+        awaitState { !vm.busy.value }
+        assertEquals(1, repository.savedKnown)
+        compose.onNodeWithText("Повторить загрузку").performClick()
+        awaitState { !vm.busy.value && vm.training.value!!.completed }
+        assertEquals(1, repository.savedKnown)
+    }
+
+    @Test fun `dictionary_filters_known_cards_and_returns_them_to_learning`() {
+        awaitState { vm.library.value.dictionaries.isNotEmpty() }
+        val first = runBlocking { repository.words(dictionaryId).first() }
+        compose.onNodeWithText("На каждый день").performScrollTo().performClick()
+        compose.onNodeWithTag("known-${first.id}").performScrollTo().performClick()
+        awaitState { !vm.busy.value && vm.library.value.words.first().alreadyKnown }
+        compose.onNodeWithTag("word-filter-3").performScrollTo().performClick()
+        compose.onNodeWithText("cat", substring = false).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("dog", substring = false).assertDoesNotExist()
+        screenshot("known-dictionary-light")
+        compose.onNodeWithTag("known-${first.id}").performScrollTo().performClick()
+        awaitState { !vm.busy.value && !vm.library.value.words.first().alreadyKnown }
+        compose.onNodeWithText("Ничего не найдено").assertExists()
+        compose.onNodeWithTag("word-filter-1").performScrollTo().performClick()
+        compose.onNodeWithText("cat", substring = false).performScrollTo().assertIsDisplayed()
+        runBlocking { repository.words(dictionaryId).forEach { repository.markAlreadyKnown(it.id) } }
+        awaitState { vm.library.value.words.all { it.alreadyKnown } }
+        compose.onNodeWithText("Учить новые слова").assertIsNotEnabled()
+        compose.onNodeWithText("Повторить выученные").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("Все карточки уже знакомы").assertExists()
+    }
+
+    @Test fun `review_excludes_known_questions_but_retains_known_distractors`() {
+        runBlocking {
+            val words = repository.words(dictionaryId)
+            repository.markAlreadyKnown(words.first().id)
+            database.dao().updateWord(words[1].copy(learned = true, streak = 3))
+        }
+        start(TrainingMode.REVIEW)
+        assertEquals("dog", vm.training.value!!.question!!.word)
+        assertEquals(1, vm.training.value!!.total)
+        assertTrue("cat" in vm.training.value!!.choices)
+        compose.onNodeWithTag("already-know").assertDoesNotExist()
+        submit("dog")
+        assertTrue(vm.training.value!!.completed)
     }
 
     @Test fun correctChoicesAdvanceAndMasterSingletonWithoutContinuation() {
@@ -305,6 +442,11 @@ class TrainingFlowTest {
             fontScale.value = 2f
         }
         screenshot("library-small-large-font")
+        compose.onNodeWithContentDescription("Настройки обучения").performClick()
+        compose.onNodeWithText("Сохранить").performScrollTo().assertIsDisplayed()
+        screenshot("settings-small-large-font")
+        compose.onNodeWithText("Отмена").performScrollTo().performClick()
+        compose.onNodeWithTag("library-grid").performScrollToNode(hasText("На каждый день"))
         compose.onNodeWithText("На каждый день").performScrollTo().performClick()
         compose.onNodeWithTag("dictionary-list").performScrollToNode(hasText("Выучено"))
         compose.onNodeWithText("Выучено", useUnmergedTree = true).assertIsDisplayed()
@@ -372,7 +514,19 @@ class TrainingFlowTest {
             bitmap = Bitmap.createBitmap(bounds.width.toInt(), bounds.height.toInt(), Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
             canvas.translate(-bounds.left, -bounds.top)
-            compose.activity.window.decorView.draw(canvas)
+            val decor = compose.activity.window.decorView
+            decor.draw(canvas)
+            if (Build.VERSION.SDK_INT >= 29) {
+                // Dialogs have their own window and are absent from the activity's decor drawing.
+                val activityOrigin = IntArray(2).also { decor.getLocationOnScreen(it) }
+                WindowInspector.getGlobalWindowViews().filter { it !== decor && it.isShown }.forEach { window ->
+                    val origin = IntArray(2).also { window.getLocationOnScreen(it) }
+                    canvas.save()
+                    canvas.translate((origin[0] - activityOrigin[0]).toFloat(), (origin[1] - activityOrigin[1]).toFloat())
+                    window.draw(canvas)
+                    canvas.restore()
+                }
+            }
         }
         val directory = System.getProperty("wordpocket.screenshotDir")?.let(::File)
             ?: File(compose.activity.getExternalFilesDir(null), "screenshots")
@@ -387,6 +541,19 @@ class TrainingFlowTest {
         var failSave = false
         var failNextRead = false
         var savedAnswers = 0
+        var savedKnown = 0
+        var failSettings = false
+
+        override suspend fun updateLearningSettings(requiredStreak: Int) {
+            check(!failSettings) { "Тест: настройки недоступны" }
+            super.updateLearningSettings(requiredStreak)
+        }
+
+        override suspend fun markAlreadyKnown(wordId: Long) {
+            check(!failSave) { "Тест: запись недоступна" }
+            super.markAlreadyKnown(wordId)
+            savedKnown++
+        }
 
         override suspend fun words(id: Long): List<WordEntity> {
             if (failNextRead) {

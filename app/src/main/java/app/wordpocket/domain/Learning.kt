@@ -3,7 +3,8 @@ package app.wordpocket.domain
 import java.text.Normalizer
 import java.util.Locale
 
-const val REQUIRED_STREAK = 3
+const val DEFAULT_REQUIRED_STREAK = 1
+val REQUIRED_STREAK_RANGE = 1..100
 
 fun normalizeAnswer(value: String): String = Normalizer.normalize(value, Normalizer.Form.NFKC)
     .trim().lowercase(Locale.ROOT)
@@ -18,9 +19,10 @@ fun wordIdentity(word: String, translation: String): String =
 
 data class LearningResult(val streak: Int, val learned: Boolean)
 
-fun recordAnswer(streak: Int, correct: Boolean): LearningResult {
-    val next = if (correct) (streak + 1).coerceAtMost(REQUIRED_STREAK) else 0
-    return LearningResult(next, next >= REQUIRED_STREAK)
+fun recordAnswer(streak: Int, correct: Boolean, requiredStreak: Int): LearningResult {
+    require(requiredStreak in REQUIRED_STREAK_RANGE) { "Количество ответов: от 1 до 100." }
+    val next = if (correct) (streak + 1).coerceAtMost(requiredStreak) else 0
+    return LearningResult(next, next >= requiredStreak)
 }
 
 data class WordDraft(val word: String, val translation: String, val transcription: String = "") {

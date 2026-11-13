@@ -16,6 +16,25 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import app.wordpocket.data.*
 import app.wordpocket.domain.WordDraft
+import app.wordpocket.domain.REQUIRED_STREAK_RANGE
+
+@Composable
+internal fun LearningSettingsDialog(settings: AppSettings, busy: Boolean, onDismiss: () -> Unit, onSave: (Int) -> Unit) {
+    var requiredStreak by rememberSaveable { mutableStateOf(settings.requiredStreak.toString()) }
+    val value = requiredStreak.toIntOrNull()
+    val valid = value != null && value in REQUIRED_STREAK_RANGE
+    PaperDialog("Настройки обучения", "Общие для всех словарей.", busy, onDismiss) {
+        OutlinedTextField(requiredStreak, { requiredStreak = it }, Modifier.fillMaxWidth(), enabled = !busy,
+            label = { Text("Правильных ответов подряд") }, singleLine = true, shape = RoundedCornerShape(9.dp),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            isError = !valid, supportingText = { Text("От 1 до 100. По умолчанию — 1.") })
+        Muted("Новый порог применяется к следующим ответам, включая сохранённый пул. Серия сохраняется; ошибка сбрасывает её в ноль. Уже выученные карточки сохраняют статус.")
+        DialogActions {
+            PaperButton("Отмена", onDismiss, Modifier.weight(1f), !busy, primary = false)
+            PaperButton("Сохранить", { if (value != null && valid) onSave(value) }, Modifier.weight(1f), !busy && valid)
+        }
+    }
+}
 
 @Composable
 private fun PaperDialog(title: String, intro: String, busy: Boolean, onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
@@ -85,7 +104,7 @@ internal fun WordDialog(word: WordEntity?, busy: Boolean, onDismiss: () -> Unit,
             maxLines = 3, shape = RoundedCornerShape(9.dp), supportingText = { Text("Необязательно · до 300 символов") })
         OutlinedTextField(translation, { translation = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("Перевод") },
             maxLines = 5, shape = RoundedCornerShape(9.dp), supportingText = { Text("До 500 символов") })
-        if (word != null) Muted("Изменение слова или перевода сбросит его прогресс. Транскрипцию можно менять без сброса.")
+        if (word != null) Muted("Изменение слова или перевода сбросит прогресс и отметку «Уже знаю». Транскрипцию можно менять без сброса.")
         DialogActions {
             PaperButton("Отмена", onDismiss, Modifier.weight(1f), !busy, primary = false)
             PaperButton("Сохранить", { onSave(WordDraft(english, translation, transcription)) }, Modifier.weight(1f),

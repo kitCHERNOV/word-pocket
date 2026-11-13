@@ -30,6 +30,7 @@ import app.wordpocket.domain.answersMatch
 internal fun TrainingScreen(
     session: Training, busy: Boolean, onMode: (AnswerMode) -> Unit,
     onAnswer: (Long, String?, AnswerMode) -> Unit,
+    onAlreadyKnown: (Long) -> Unit,
 ) {
     var answer by rememberSaveable(session.questionToken) { mutableStateOf("") }
     val scroll = key(session.questionToken) { rememberScrollState() }
@@ -76,10 +77,7 @@ internal fun TrainingScreen(
                         }
                         if (session.mode == TrainingMode.LEARN) {
                             val streak = feedback?.streak ?: word.streak
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                StreakDots(streak)
-                                Muted("$streak из 3 верных ответов")
-                            }
+                            StreakProgress(streak, session.requiredStreak)
                         }
                     }
                 }
@@ -111,6 +109,10 @@ internal fun TrainingScreen(
                     if (session.choices.isEmpty()) Muted("В словаре пока недостаточно разных вариантов — ответьте письменно.")
                 }
                 if (feedback == null && !session.advancePending && !session.loadFailed) {
+                    if (session.mode == TrainingMode.LEARN) {
+                        PaperButton("Already know", { onAlreadyKnown(session.questionToken) },
+                            Modifier.fillMaxWidth().testTag("already-know"), answering, primary = false, icon = R.drawable.ic_check)
+                    }
                     TextButton(onClick = { onAnswer(session.questionToken, null, source) }, enabled = answering, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                         Text("Пока не знаю", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -119,7 +121,7 @@ internal fun TrainingScreen(
                 Muted("В вашем темпе. Без спешки.", Modifier.padding(vertical = 4.dp))
             }
             if (session.loadFailed) {
-                Text(if (session.advancePending) "Не удалось загрузить карточку. Сохранённый ответ не будет засчитан повторно."
+                Text(if (session.advancePending) "Не удалось загрузить карточку. Последнее действие сохранено и не будет выполнено повторно."
                     else "Не удалось загрузить карточку. Попробуйте ещё раз.", color = MaterialTheme.colorScheme.error)
             }
         }
@@ -163,12 +165,12 @@ private fun Completion(session: Training) {
         verticalArrangement = Arrangement.spacedBy(24.dp)) {
         PaperIcon(R.drawable.ic_sun, modifier = Modifier.size(85.dp), tint = MaterialTheme.colorScheme.primary)
         Eyebrow("Можно собой гордиться", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(if (session.mode == TrainingMode.LEARN) "Слова стали\nближе." else "Всё на своём\nместе.",
+        Text(if (session.mode == TrainingMode.LEARN) "Занятие\nзавершено." else "Всё на своём\nместе.",
             style = MaterialTheme.typography.headlineLarge, textAlign = TextAlign.Center)
-        Text(if (session.mode == TrainingMode.LEARN) "Вы закрепили все карточки этого пула. Возвращайтесь к ним в режиме повторения."
+        Text(if (session.mode == TrainingMode.LEARN) "Все карточки этого пула разобраны. Выученные доступны для повторения, а уже знакомые исключены из тренировок."
             else "Вы вспомнили все карточки этого занятия. Маленькое повторение — ещё один шаг вперёд.",
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         Text("${session.total}", style = MaterialTheme.typography.headlineLarge.copy(fontSize = 56.sp, lineHeight = 62.sp), color = MaterialTheme.colorScheme.primary)
-        Muted(if (session.mode == TrainingMode.LEARN) "карточек выучено" else "карточек повторено")
+        Muted(if (session.mode == TrainingMode.LEARN) "карточек обработано" else "карточек повторено")
     }
 }
