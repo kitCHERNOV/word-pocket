@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1254 1254" fill="none">
+  <title>КитЛэнг — улыбающийся кит</title>
+  <defs>
+    <linearGradient id="body" x1="220" y1="340" x2="1030" y2="1039" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#DB7852"/>
+      <stop offset="1" stop-color="#D66D49"/>
+    </linearGradient>
+    <linearGradient id="belly" x1="180" y1="785" x2="580" y2="1030" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FAEBD7"/>
+      <stop offset="1" stop-color="#F7E5CF"/>
+    </linearGradient>
+    <linearGradient id="fin" x1="475" y1="755" x2="755" y2="1010" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#BF6544"/>
+      <stop offset="1" stop-color="#AE5539"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#body)" d="M65 685C57 560 146 437 252 379C373 313 512 334 613 395C684 438 721 505 771 553C821 600 871 614 912 589C955 562 960 516 924 490C903 473 863 475 826 445C780 412 758 359 766 304C770 276 780 262 798 275C821 290 843 293 873 294C931 294 965 307 990 361C1015 317 1049 301 1089 301C1124 300 1141 306 1172 286C1191 273 1196 307 1197 326C1201 393 1166 438 1116 462C1094 475 1066 475 1050 501C1038 520 1038 542 1036 565C1029 741 945 884 785 949C676 1014 579 1046 449 1039C280 1034 140 957 83 799C72 770 66 727 65 685Z"/>
+  <path fill="url(#belly)" d="M121 784C227 780 359 859 441 882C511 904 561 900 635 930L666 979C603 1014 521 1025 464 1023C311 1024 184 948 119 810C111 794 109 786 121 784Z"/>
+  <path fill="url(#fin)" d="M480 756C541 734 606 761 650 807C692 849 704 881 737 920C766 949 777 977 754 1001C728 1031 678 1032 637 1015C578 992 522 948 488 883C465 842 437 777 480 756Z"/>
+  <path fill="#30312B" d="M401.5 648.5A28.5 28.5 0 1 1 344.5 648.5A28.5 28.5 0 1 1 401.5 648.5Z"/>
+  <path stroke="#30312B" stroke-width="22" stroke-linecap="round" d="M172 729C210 753 271 747 298 700"/>
+</svg>

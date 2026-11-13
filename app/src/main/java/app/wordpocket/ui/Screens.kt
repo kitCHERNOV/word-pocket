@@ -4,12 +4,16 @@ package app.wordpocket.ui
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -52,18 +56,12 @@ fun WordPocketRoot(vm: AppViewModel, darkTheme: Boolean, onToggleTheme: () -> Un
     BackHandler(enabled = dictionaryId != null || training != null) { back() }
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top))) {
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            Row(Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (dictionaryId == null && training == null) {
-                    IconButton(onClick = onToggleTheme, modifier = Modifier.size(48.dp)) {
-                        PaperIcon(if (darkTheme) R.drawable.ic_sun else R.drawable.ic_moon,
-                            description = if (darkTheme) "Включить светлую тему" else "Включить тёмную тему",
-                            tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
-                    }
-                    Text("WordPocket", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                    PaperIconButton(R.drawable.ic_settings, "Настройки обучения", !busy && settings != null) { learningSettings = true }
-                    PaperIconButton(R.drawable.ic_plus, "Создать словарь", !busy) { createDictionary = true }
-                } else {
+            if (dictionaryId == null && training == null) {
+                LibraryHeader(darkTheme, onToggleTheme, !busy && settings != null, !busy,
+                    onSettings = { learningSettings = true }, onCreate = { createDictionary = true })
+            } else {
+                Row(Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     PaperIconButton(R.drawable.ic_back, "Назад", !busy) { back() }
                     Text(training?.dictionaryName ?: "Мой словарь", modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -105,7 +103,7 @@ fun WordPocketRoot(vm: AppViewModel, darkTheme: Boolean, onToggleTheme: () -> Un
                             DictionaryScreen(dictionary, library.words.filter { it.dictionaryId == dictionary.id },
                                 library.pool.filter { it.dictionaryId == dictionary.id }, busy, vm, settings?.requiredStreak ?: 1,
                                 onImport = { importTarget = dictionary.id; importLauncher.launch(arrayOf("application/json", "text/*", "application/octet-stream")) },
-                                onExport = { exportTarget = dictionary.id; exportLauncher.launch("wordpocket-${dictionary.id}.json") })
+                                onExport = { exportTarget = dictionary.id; exportLauncher.launch("kitlang-${dictionary.id}.json") })
                         }
                         else -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                     }
@@ -128,4 +126,42 @@ fun WordPocketRoot(vm: AppViewModel, darkTheme: Boolean, onToggleTheme: () -> Un
         if (training?.mode == TrainingMode.LEARN) "Ответы и текущий пул сохранены. Продолжите, когда будет удобно."
         else "Выученные слова сохранят свой статус. Следующее повторение начнётся заново.",
         "Выйти", busy, { exitTraining = false }, { exitTraining = false; vm.closeTraining() })
+}
+
+@Composable
+private fun LibraryHeader(
+    darkTheme: Boolean, onToggleTheme: () -> Unit, settingsEnabled: Boolean, createEnabled: Boolean,
+    onSettings: () -> Unit, onCreate: () -> Unit,
+) {
+    BoxWithConstraints(Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp)) {
+        val brand: @Composable () -> Unit = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Image(painterResource(R.drawable.ic_kitlang), contentDescription = null, modifier = Modifier.size(44.dp))
+                Text(stringResource(R.string.app_name), style = MaterialTheme.typography.titleLarge)
+            }
+        }
+        val actions: @Composable () -> Unit = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onToggleTheme, modifier = Modifier.size(48.dp)) {
+                    PaperIcon(if (darkTheme) R.drawable.ic_sun else R.drawable.ic_moon,
+                        description = if (darkTheme) "Включить светлую тему" else "Включить тёмную тему",
+                        tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                }
+                PaperIconButton(R.drawable.ic_settings, "Настройки обучения", settingsEnabled, onSettings)
+                PaperIconButton(R.drawable.ic_plus, "Создать словарь", createEnabled, onCreate)
+            }
+        }
+        if (maxWidth < 340.dp || LocalDensity.current.fontScale > 1.3f) {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                brand()
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) { actions() }
+            }
+        } else {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween) {
+                brand()
+                actions()
+            }
+        }
+    }
 }
